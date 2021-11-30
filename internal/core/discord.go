@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/fishykins/trevor/internal/core/lang"
 )
 
 var Client *discordgo.Session
@@ -132,33 +131,29 @@ func messageEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	fmt.Println(m.Content)
-
 	// check if the message is "!airhorn"
-	if strings.HasPrefix(m.Content, "insult") {
-
-		// Find the channel that the message came from.
-		c, err := s.State.Channel(m.ChannelID)
-		if err != nil {
-			// Could not find channel.
-			return
-		}
-
-		// Find the guild for that channel.
-		_, err = s.State.Guild(c.GuildID)
-		if err != nil {
-			// Could not find guild.
-			return
-		}
-
-		// Respond
-		msg, err := lang.Insult("you")
-		if err != nil {
-			fmt.Println(err)
-		} else {
-			s.ChannelMessageSend(m.ChannelID, msg)
-		}
+	if strings.HasPrefix(strings.ToLower(m.Content), BangTag(s.State.User.ID)) {
+		TaggedMessageEvent(s, m)
 	}
+}
+
+// Handles messages that start with the bot's mention.
+func TaggedMessageEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
+	// Find the channel that the message came from.
+	c, err := s.State.Channel(m.ChannelID)
+	if err != nil {
+		// Could not find channel.
+		return
+	}
+
+	// Find the guild for that channel.
+	_, err = s.State.Guild(c.GuildID)
+	if err != nil {
+		// Could not find guild.
+		return
+	}
+	msg := fmt.Sprintf("Hello %s, your discord username is %s\n", UserTag(m.Author.ID), m.Author.Username)
+	s.ChannelMessageSend(m.ChannelID, msg)
 }
 
 // This function will be called (due to AddHandler above) every time a new
