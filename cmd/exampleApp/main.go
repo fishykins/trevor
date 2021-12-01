@@ -5,10 +5,11 @@ import (
 	"os/signal"
 
 	"github.com/fishykins/trevor/pkg/core"
+	"github.com/fishykins/trevor/pkg/modules/babel"
 )
 
 func main() {
-	core.InitApplication("exampleApp", []core.Module{}, true)
+	core.InitApplication("exampleApp", []core.Module{babel.Babel}, true)
 	core.StartApplication()
 	defer core.StopApplication()
 

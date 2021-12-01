@@ -29,7 +29,7 @@ Trevor was born into this world as a simple bot with the *sole* purpose of dishi
 As this repo makes extensive use of slash commands, it requires a local install of [Discordgo](https://github.com/bwmarrin/discordgo), as this feature is not yet released. Expect breaking changes!
 
 ## Application Flow
-The application is broken down into three key stages:
+The application is broken down into four key stages:
 1. **Init** builds the basic application.
 2. **Start** connects the application to Discord and opens any required database connections.
 3. **Ready** is called once discord has given us the all clear.

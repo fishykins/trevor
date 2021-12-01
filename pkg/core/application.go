@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const PUSH bool = false
+const PUSH bool = true
 
 // The main entry point for the application. There should only be one instance of this being handled at a time!
 type Application struct {
@@ -32,6 +32,10 @@ func App() *Application {
 	return trevor
 }
 
+func (a *Application) Databass() *Databass {
+	return a.databass
+}
+
 // Initialize the application and all its submodules. Be aware that submoudles can fail their initialization without causing the application init to fail.
 func InitApplication(name string, modules []Module, debug bool) (*Application, []error) {
 	if trevor != nil {
@@ -49,7 +53,9 @@ func InitApplication(name string, modules []Module, debug bool) (*Application, [
 				{
 					Name:        "ping",
 					Description: "Ping the bot to make sure it's alive.",
-					Callback:    func(c Command) {},
+					Callback: func(c Command) {
+						c.Reply("Pong!", true)
+					},
 				},
 			},
 		},
@@ -94,6 +100,8 @@ func InitApplication(name string, modules []Module, debug bool) (*Application, [
 		commands: make(map[string]CommandType),
 	}
 
+	Log("Init")
+
 	// Init modules
 	for _, m := range trevor.modules {
 		if m.Init != nil {
@@ -118,6 +126,8 @@ func StartApplication() error {
 	if trevor == nil {
 		return fmt.Errorf("Application not initialized")
 	}
+
+	Log("Starting application...")
 
 	// Connect to database
 	err := trevor.databass.Connect()
@@ -160,7 +170,7 @@ func StopApplication() (bool, []error) {
 	for _, m := range trevor.modules {
 		if m.Stop != nil {
 			Logf("Stopping module \"%s\"... ", m.Name)
-			err := m.Stop()
+			err := m.Stop(trevor)
 			if err != nil {
 				errs = append(errs, err)
 				Logp("Failed: \"%s\": %s\n", m.Name, err)
@@ -188,21 +198,20 @@ func (a *Application) Name() string {
 
 // Called when the discord client is ready.
 func clientReady(s *discordgo.Session, r *discordgo.Ready) {
-	Log("Discord client connected")
+	Log("Application ready")
 
 	trevor := App()
 
 	// Collect all registered discord commands so we can use them later
 	commands, _ := trevor.session.ApplicationCommands(trevor.session.State.User.ID, "")
+	preregistered := make(map[string]*discordgo.ApplicationCommandOption)
 
 	if len(commands) > 0 {
-		Log("Discord commands:")
 		for _, c := range commands {
-			Logf("\t%s: %s\n", c.Name, c.Description)
 			if len(c.Options) > 0 {
-				Log("\t\tSub-commands:")
 				for _, o := range c.Options {
-					Logf("\t\t\t%s: %s\n", o.Name, o.Description)
+					cmdName := fmt.Sprintf("%s_%s", c.Name, o.Name)
+					preregistered[cmdName] = o
 				}
 			}
 		}
@@ -210,6 +219,8 @@ func clientReady(s *discordgo.Session, r *discordgo.Ready) {
 
 	// Build all commands and push to discord if needed
 	for _, m := range trevor.modules {
+		needsUpdate := false
+
 		if len(m.Commands) > 0 {
 			// Build the root command for this module
 			rootCommand := discordgo.ApplicationCommand{
@@ -220,17 +231,25 @@ func clientReady(s *discordgo.Session, r *discordgo.Ready) {
 
 			for _, c := range m.Commands {
 				// Register commands locally for callback lookup
-				trevor.commands[c.Name] = c
+				cmdName := fmt.Sprintf("%s_%s", m.Name, c.Name)
+				trevor.commands[cmdName] = c
+				Log("Cached local command:", cmdName)
 				// Add command to root command (For exporting to discord)
 				cmd := c.IntoDiscordCommand()
 				rootCommand.Options = append(rootCommand.Options, &cmd)
+				if _, ok := preregistered[cmdName]; !ok {
+					// This command does not seem to be registered, so lets push it to discord.
+					Log("Queing " + cmdName + " for discord push...")
+					needsUpdate = true
+				}
 			}
 
 			// Push!
-			if PUSH {
+			if PUSH && needsUpdate {
 				_, err := trevor.session.ApplicationCommandCreate(trevor.session.State.User.ID, "", &rootCommand)
 				if err != nil {
 					Log("Failed to push commands to discord:", err)
+					Log("Root:", rootCommand.Options[0])
 				} else {
 					Logf("Pushed module group \"%s\" to discord!\n", rootCommand.Name)
 				}
@@ -242,7 +261,7 @@ func clientReady(s *discordgo.Session, r *discordgo.Ready) {
 	for _, m := range trevor.modules {
 		if m.Ready != nil {
 			Logf("Starting module \"%s\"... ", m.Name)
-			err := m.Ready()
+			err := m.Ready(trevor)
 			//TODO: Handle errors
 			if err != nil {
 				Logp("Failed: \"%s\": %s\n", m.Name, err)
@@ -251,9 +270,31 @@ func clientReady(s *discordgo.Session, r *discordgo.Ready) {
 			}
 		}
 	}
+	Log("Finished starting application")
 }
 
 func commandEvent(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	root := i.ApplicationCommandData()
+	sub := root.Options[0]
+	name := root.Name + "_" + sub.Name
+	if cmdType, ok := trevor.commands[name]; ok {
+
+		args := make([]CommandArg, 0)
+		// Strip arguments
+		for _, a := range sub.Options {
+			args = append(args, *ArgFromDiscordOption(a))
+		}
+		cmd := Command{
+			Type:        cmdType.Name,
+			Args:        args,
+			Session:     s,
+			Interaction: i,
+		}
+		Logf("Executing command \"%s\" with args %v\n", cmdType.Name, cmd.Args)
+		cmdType.Callback(cmd)
+	} else {
+		Log("Unknown command:", name)
+	}
 }
 
 // This function will be called every time a new message is created on any channel that the authenticated bot has access to.
@@ -283,7 +324,7 @@ func taggedMessageEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// Could not find guild.
 		return
 	}
-	msg := fmt.Sprintf("Hello %s, your discord username is %s\n", UserTag(m.Author.ID), m.Author.Username)
+	msg := fmt.Sprintf("Hello %s!\n", UserTag(m.Author.ID))
 	s.ChannelMessageSend(m.ChannelID, msg)
 }
 

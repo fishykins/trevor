@@ -23,8 +23,8 @@ func (c *CommandType) IntoDiscordCommand() discordgo.ApplicationCommandOption {
 			Name:        arg.Name,
 			Description: arg.Description,
 			Required:    arg.Required,
-			Type:        *arg.Type,
 			Options:     []*discordgo.ApplicationCommandOption{},
+			Type:        arg.Type,
 		}
 		opt.Options = append(opt.Options, cmd)
 	}
