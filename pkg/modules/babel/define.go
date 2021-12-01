@@ -14,6 +14,7 @@ func Define(cmd core.Command) {
 
 	if word != nil {
 		if word.Description != "" {
+			cmd.EditReply(Affirmative())
 			cmd.Message(fmt.Sprintf("**%s** <*%s*>\n%s", word.Inner, word.Type, word.Description))
 		} else {
 			cmd.EditReply(fmt.Sprintf("While I can find \"%s\" in my dictionary, it doesn't seem to have a defenition attached yet. sorry!", arg))

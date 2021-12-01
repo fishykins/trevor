@@ -22,8 +22,28 @@ var Babel core.Module = core.Module{
 					Required:    true,
 					Type:        discordgo.ApplicationCommandOptionString,
 				},
+				{
+					Name:        "private",
+					Description: "If true, responds only to you.",
+					Required:    false,
+					Default:     false,
+					Type:        discordgo.ApplicationCommandOptionBoolean,
+				},
 			},
 			Callback: Define,
+		},
+		{
+			Name:        "insult",
+			Description: "Insult a user.",
+			Args: []core.CommandArgType{
+				{
+					Name:        "user",
+					Description: "The user to dish it on.",
+					Required:    true,
+					Type:        discordgo.ApplicationCommandOptionUser,
+				},
+			},
+			Callback: Insult,
 		},
 	},
 	Ready: ready,
