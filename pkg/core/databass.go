@@ -27,7 +27,7 @@ func (d *Databass) Disconnect() error {
 }
 
 func (d *Databass) Internal() *mongo.Database {
-	return d.client.Database("databass")
+	return d.client.Database("trevor")
 }
 
 func (d *Databass) Dictionary() *mongo.Database {

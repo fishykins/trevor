@@ -6,10 +6,11 @@ import (
 
 	"github.com/fishykins/trevor/pkg/core"
 	"github.com/fishykins/trevor/pkg/modules/babel"
+	"github.com/fishykins/trevor/pkg/modules/profile"
 )
 
 func main() {
-	core.InitApplication("exampleApp", []core.Module{babel.Babel}, true)
+	core.InitApplication("Trevor", []core.Module{babel.Babel, profile.Profile}, true)
 	core.StartApplication()
 	defer core.StopApplication()
 

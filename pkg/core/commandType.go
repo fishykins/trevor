@@ -26,6 +26,14 @@ func (c *CommandType) IntoDiscordCommand() discordgo.ApplicationCommandOption {
 			Options:     []*discordgo.ApplicationCommandOption{},
 			Type:        arg.Type,
 		}
+
+		if arg.Choices != nil {
+			cmd.Choices = make([]*discordgo.ApplicationCommandOptionChoice, len(arg.Choices))
+			for i, choice := range arg.Choices {
+				cmd.Choices[i] = choice
+			}
+		}
+
 		opt.Options = append(opt.Options, cmd)
 	}
 	return opt

@@ -121,7 +121,7 @@ func InitApplication(name string, modules []Module, debug bool) (*Application, [
 }
 
 // Opens all application connections, including database and discord.
-// Note: This does NOT excute start functions for modules, that is handled when discord triggers the ready event.
+// Note: This does NOT execute start functions for modules, that is handled when discord triggers the ready event.
 func StartApplication() error {
 	if trevor == nil {
 		return fmt.Errorf("Application not initialized")

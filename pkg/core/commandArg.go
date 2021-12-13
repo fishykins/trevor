@@ -8,6 +8,7 @@ type CommandArgType struct {
 	Required    bool
 	Default     interface{}
 	Type        discordgo.ApplicationCommandOptionType
+	Choices     []*discordgo.ApplicationCommandOptionChoice
 }
 
 type CommandArg struct {
