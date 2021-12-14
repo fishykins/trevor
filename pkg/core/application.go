@@ -55,6 +55,7 @@ func InitApplication(name string, modules []Module, debug bool) (*Application, [
 					Description: "Ping the bot to make sure it's alive.",
 					Callback: func(c Command) {
 						c.Reply("Pong!", true)
+
 					},
 				},
 			},
@@ -307,6 +308,13 @@ func messageEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	if strings.HasPrefix(strings.ToLower(m.Content), BangTag(s.State.User.ID)) {
 		taggedMessageEvent(s, m)
+		return
+	}
+
+	for _, module := range trevor.modules {
+		if module.Snooper != nil {
+			module.Snooper(s, m)
+		}
 	}
 }
 

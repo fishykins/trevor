@@ -2,7 +2,6 @@ package profile
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/fishykins/trevor/pkg/core"
@@ -12,6 +11,7 @@ import (
 var Users []*models.User
 
 // The profile module handles indivudal user data. It has a basic handle on discord and steam ids built in.
+// User data can still be used if this module is not loaded, Profile simply facilitates user caching and a few helper commands.
 var Profile core.Module = core.Module{
 	Name:        "profile",
 	Description: "Profile related commands",
@@ -48,50 +48,44 @@ var Profile core.Module = core.Module{
 }
 
 func ready(a *core.Application) error {
-	Users = GetUsersFromMongo()
+	Users = core.App().Databass().Users()
 	return nil
 }
 
-func GetId(u *discordgo.User) uint64 {
-	userId, err := strconv.ParseUint(u.ID, 10, 64)
-	if err != nil {
-		return 0
+// This should always return a user object, else somthing has gone very wrong.
+func GetUser(u *discordgo.User) *models.User {
+	userId := core.GetUserId(u)
+	for _, user := range Users {
+		if user.DiscordID == userId {
+			return user
+		}
 	}
-	return userId
+
+	localUser := models.NewUser(userId, 0, u.Username)
+	Users = append(Users, localUser)
+	return localUser
 }
 
 // This should always return a user object, else somthing has gone very wrong.
-func GetUser(u *discordgo.User) (*models.User, error) {
-	userId := GetId(u)
+func TryGetUser(u *discordgo.User) (*models.User, error) {
+	userId := core.GetUserId(u)
 	for _, user := range Users {
 		if user.DiscordID == userId {
 			return user, nil
 		}
 	}
-
-	localUser := &models.User{
-		DiscordID: userId,
-		Name:      u.Username,
-		SteamID:   0,
-	}
-
-	Users = append(Users, localUser)
-	return localUser, nil
+	return nil, nil
 }
 
 func UpdateUser(u *models.User) error {
 	ctx := context.Background()
-	return UpdateMongoUser(&ctx, u)
+	return core.App().Databass().UpdateUser(&ctx, u)
 }
 
 func RemoveUser(cmd core.Command) {
 	ctx := context.Background()
-	user, err := GetUser(cmd.User)
-	if err != nil {
-		cmd.Reply("Failed to remove user from database- contact admin for support.", true)
-		return
-	}
-	RemoveMongoUser(&ctx, user)
+	user := GetUser(cmd.User)
+	core.App().Databass().RemoveUser(&ctx, user)
 	cmd.Reply("Removed user from database.", true)
 	// TODO: Remove user from local cache as well.
 }

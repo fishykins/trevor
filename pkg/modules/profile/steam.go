@@ -10,13 +10,10 @@ const SID_LENGTH = 17
 
 func SetSteamId(cmd core.Command) {
 	core.Log("Setting steam id for user " + cmd.User.Username + "...")
-	user, err := GetUser(cmd.User)
-	if err != nil {
-		cmd.Reply("Failed to update steam id: "+err.Error(), true)
-		return
-	}
+	user := GetUser(cmd.User)
 
 	user.Name = cmd.User.Username
+	user.Tokens["steam"] = "SET"
 
 	steamIdStr := cmd.GetArg("id").IntoDiscordOption().StringValue()
 	steamId, err := strconv.ParseUint(steamIdStr, 10, 64)
