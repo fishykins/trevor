@@ -1,38 +1,31 @@
 package profile
 
 import (
-	"context"
-	"fmt"
+	"strconv"
 
 	"github.com/fishykins/trevor/pkg/core"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 const SID_LENGTH = 17
 
-func SetSteamId(command core.Command) {
-	ctx := context.Background()
-	usersCollection := core.App().Databass().Users()
-
-	discordID := command.Interaction.User.ID
-	//steamID := command.GetArg("id").IntoDiscordOption().IntValue()
-
-	cursor, err := usersCollection.Find(ctx, bson.M{"_id": discordID})
+func SetSteamId(cmd core.Command) {
+	core.Log("Setting steam id for user " + cmd.User.Username + "...")
+	user, err := GetUser(cmd.User)
 	if err != nil {
-		core.Error(err)
-		command.Reply("I can't find you in my databass, which is my bad. Tell Fishy to fix this...", true)
+		cmd.Reply("Failed to update steam id: "+err.Error(), true)
 		return
 	}
-	defer cursor.Close(ctx)
-	for cursor.Next(ctx) {
-		var user User
-		if err = cursor.Decode(&user); err != nil {
-			core.Error(err)
-			msg := fmt.Sprintf("Oh shit, this is an error yo: %s\n", err.Error())
-			command.Reply(msg, true)
-		}
-		fmt.Println(user)
-		command.Reply("I got you bro", true)
-	}
 
+	user.Name = cmd.User.Username
+
+	steamIdStr := cmd.GetArg("id").IntoDiscordOption().StringValue()
+	steamId, err := strconv.ParseUint(steamIdStr, 10, 64)
+	if err == nil {
+		user.SteamID = steamId
+		cmd.Reply("SteamID set to "+steamIdStr, true)
+		UpdateUser(user)
+		// TODO: Check the steam id is valid
+	} else {
+		cmd.Reply("Invalid SteamID: "+err.Error(), true)
+	}
 }

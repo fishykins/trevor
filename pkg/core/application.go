@@ -289,6 +289,7 @@ func commandEvent(s *discordgo.Session, i *discordgo.InteractionCreate) {
 			Args:        args,
 			Session:     s,
 			Interaction: i,
+			User:        i.Member.User,
 		}
 		Logf("Executing command \"%s\" with args %v\n", cmdType.Name, cmd.Args)
 		cmdType.Callback(cmd)
