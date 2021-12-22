@@ -16,7 +16,11 @@ func BangTag(id string) string {
 }
 
 func GetUserId(u *discordgo.User) uint64 {
-	userId, err := strconv.ParseUint(u.ID, 10, 64)
+	return GetUserIdFromStr(u.ID)
+}
+
+func GetUserIdFromStr(u string) uint64 {
+	userId, err := strconv.ParseUint(u, 10, 64)
 	if err != nil {
 		return 0
 	}

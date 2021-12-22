@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/fishykins/trevor/pkg/models"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -14,13 +15,15 @@ const PUSH bool = true
 
 // The main entry point for the application. There should only be one instance of this being handled at a time!
 type Application struct {
-	name         string
-	modules      []Module
-	databass     *Databass
-	session      *discordgo.Session
-	commands     map[string]CommandType
-	userCommands map[string]UserCommandType
-	Debug        bool
+	name           string
+	modules        []Module
+	databass       *Databass
+	session        *discordgo.Session
+	users          []*models.User
+	commands       map[string]CommandType
+	userCommands   map[string]UserCommandType
+	buttonCommands map[string]Button
+	Debug          bool
 }
 
 var trevor *Application
@@ -81,13 +84,15 @@ func InitApplication(name string, modules []Module, debug bool) (*Application, [
 
 	// Build the application
 	trevor = &Application{
-		name:         name,
-		modules:      modules,
-		databass:     &Databass{client: mongoClient},
-		session:      session,
-		Debug:        debug,
-		commands:     make(map[string]CommandType),
-		userCommands: make(map[string]UserCommandType),
+		name:           name,
+		modules:        modules,
+		databass:       &Databass{client: mongoClient},
+		session:        session,
+		Debug:          debug,
+		users:          make([]*models.User, 0),
+		commands:       make(map[string]CommandType),
+		userCommands:   make(map[string]UserCommandType),
+		buttonCommands: make(map[string]Button),
 	}
 
 	Log("Init")
@@ -214,14 +219,14 @@ func clientReady(s *discordgo.Session, r *discordgo.Ready) {
 	for _, m := range trevor.modules {
 		needsUpdate := false
 
-		if len(m.Commands) > 0 {
-			// Build the root command for this module
-			rootCommand := discordgo.ApplicationCommand{
-				Name:        m.Name,
-				Description: m.Description,
-				Options:     []*discordgo.ApplicationCommandOption{},
-			}
+		// Build the root command for this module
+		rootCommand := discordgo.ApplicationCommand{
+			Name:        m.Name,
+			Description: m.Description,
+			Options:     []*discordgo.ApplicationCommandOption{},
+		}
 
+		if len(m.Commands) > 0 {
 			for _, c := range m.Commands {
 				// Register commands locally for callback lookup
 				cmdName := fmt.Sprintf("%s_%s", m.Name, c.Name)
@@ -247,33 +252,40 @@ func clientReady(s *discordgo.Session, r *discordgo.Ready) {
 					Logf("Pushed module group \"%s\" to discord!\n", rootCommand.Name)
 				}
 			}
+		}
 
-			// Handle user commands too
-			if len(m.UserCommands) > 0 {
-				for _, c := range m.UserCommands {
-					if _, ok := trevor.userCommands[c.Name]; ok {
-						Logf("WARNING: User command \"%s\" already exists!\n", c.Name)
-						continue
-					}
+		// Handle user commands too
+		if len(m.UserCommands) > 0 {
+			for _, c := range m.UserCommands {
+				if _, ok := trevor.userCommands[c.Name]; ok {
+					Logf("WARNING: User command \"%s\" already exists!\n", c.Name)
+					continue
+				}
 
-					// Register commands locally for callback lookup
-					trevor.userCommands[c.Name] = c
-					Log("Cached local user command:", c.Name)
-					cmd := c.IntoDiscordCommand()
-					if _, ok := preregistered[cmd.Name]; !ok {
-						// This command does not seem to be registered, so lets push it to discord.
-						_, err := trevor.session.ApplicationCommandCreate(trevor.session.State.User.ID, "", cmd)
-						if err != nil {
-							Log("Failed to push user command to discord:", err)
-							Log("Root:", rootCommand.Options[0])
-						} else {
-							Logf("Pushed user command \"%s\" to discord!\n", cmd.Name)
-						}
+				// Register commands locally for callback lookup
+				trevor.userCommands[c.Name] = c
+				Log("Cached local user command:", c.Name)
+				cmd := c.IntoDiscordCommand()
+				if _, ok := preregistered[cmd.Name]; !ok {
+					// This command does not seem to be registered, so lets push it to discord.
+					_, err := trevor.session.ApplicationCommandCreate(trevor.session.State.User.ID, "", cmd)
+					if err != nil {
+						Log("Failed to push user command to discord:", err)
+						Log("Root:", rootCommand.Options[0])
+					} else {
+						Logf("Pushed user command \"%s\" to discord!\n", cmd.Name)
 					}
 				}
 			}
 		}
 
+		// Cache any potential button presses we might need to handle
+		if len(m.Buttons) > 0 {
+			for _, b := range m.Buttons {
+				trevor.buttonCommands[b.CustomID] = b
+				Log("Cached local button:", b.CustomID)
+			}
+		}
 	}
 
 	// Execute start functions for modules
@@ -293,6 +305,11 @@ func clientReady(s *discordgo.Session, r *discordgo.Ready) {
 }
 
 func commandEvent(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	if i.Type == discordgo.InteractionMessageComponent {
+		buttonEvent(s, i)
+		return
+	}
+
 	root := i.ApplicationCommandData()
 
 	if len(root.Options) > 0 {
@@ -349,7 +366,31 @@ func moduleCommandEvent(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		Logf("Executing command \"%s\" with args %v\n", cmdType.Name, cmd.Args)
 		cmdType.Callback(cmd)
 	} else {
-		Log("Unknown command:", name)
+		Warn("Unknown command:", name)
+	}
+}
+
+func buttonEvent(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	component := i.Data.(discordgo.MessageComponentInteractionData)
+
+	if cmdType, ok := trevor.buttonCommands[component.CustomID]; ok {
+		cmd := Command{
+			Type: component.CustomID,
+			Args: []CommandArg{
+				{
+					Name:  "button",
+					Value: component.CustomID,
+					Type:  discordgo.ApplicationCommandOptionString,
+				},
+			},
+			Session:     s,
+			Interaction: i,
+			User:        i.Member.User,
+		}
+		Logf("Executing button command \"%s\"...\n", component.CustomID)
+		cmdType.Callback(cmd)
+	} else {
+		Warn("Unknown button:", component.CustomID)
 	}
 }
 

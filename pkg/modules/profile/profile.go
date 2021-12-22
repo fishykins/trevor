@@ -86,52 +86,22 @@ func ready(a *core.Application) error {
 }
 
 func snoop(s *discordgo.Session, m *discordgo.MessageCreate) {
-	user, err := TryGetUser(m.Author)
+	user, err := core.TryGetUser(m.Author)
 	if err != nil || user != nil {
 		HandleMessage(user, m.Content)
 		return
 	}
 	if user == nil {
-		user = GetUser(m.Author)
+		user = core.GetUser(m.Author)
 		HandleMessage(user, m.Content)
-		UpdateUser(user)
+		core.UpdateUser(user)
 	}
 
-}
-
-// This should always return a user object, else somthing has gone very wrong.
-func GetUser(u *discordgo.User) *models.User {
-	userId := core.GetUserId(u)
-	for _, user := range Users {
-		if user.DiscordID == userId {
-			return user
-		}
-	}
-
-	localUser := models.NewUser(userId, 0, u.Username)
-	Users = append(Users, localUser)
-	return localUser
-}
-
-// Tries to find a pre-exisitng user, or returns none
-func TryGetUser(u *discordgo.User) (*models.User, error) {
-	userId := core.GetUserId(u)
-	for _, user := range Users {
-		if user.DiscordID == userId {
-			return user, nil
-		}
-	}
-	return nil, nil
-}
-
-func UpdateUser(u *models.User) error {
-	ctx := context.Background()
-	return core.App().Databass().UpdateUser(&ctx, u)
 }
 
 func RemoveUser(cmd core.Command) {
 	ctx := context.Background()
-	user := GetUser(cmd.User)
+	user := core.GetUser(cmd.User)
 	core.App().Databass().RemoveUser(&ctx, user)
 	cmd.Reply("Removed user from database.", true)
 	// TODO: Remove user from local cache as well.
@@ -140,7 +110,7 @@ func RemoveUser(cmd core.Command) {
 func SetPlayerToken(cmd core.Command) {
 	key := cmd.GetArg("key").IntoDiscordOption().StringValue()
 	value := cmd.GetArg("value").IntoDiscordOption().StringValue()
-	user := GetUser(cmd.User)
+	user := core.GetUser(cmd.User)
 	if value != "" {
 		user.Tokens[key] = value
 		cmd.Reply("Successfully set token.", true)
@@ -148,12 +118,12 @@ func SetPlayerToken(cmd core.Command) {
 		delete(user.Tokens, key)
 		cmd.Reply("Successfully removed token.", true)
 	}
-	UpdateUser(user)
+	core.UpdateUser(user)
 }
 
 func GetPlayerToken(cmd core.Command) {
 	key := cmd.GetArg("key").IntoDiscordOption().StringValue()
-	user := GetUser(cmd.User)
+	user := core.GetUser(cmd.User)
 	value := user.Tokens[key]
 	if value != "" {
 		cmd.Reply("Token value: "+value, true)
