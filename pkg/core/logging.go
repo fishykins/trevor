@@ -62,7 +62,7 @@ func colorMessage(title string, color string, a ...interface{}) {
 	trevor := App()
 	if trevor != nil {
 		if trevor.Debug {
-			fmt.Println(append([]interface{}{trevor.name + color + " " + title + ":" + color_none}, a...)...)
+			fmt.Println(append([]interface{}{color_white + trevor.name + color + " " + title + ":" + color_none}, a...)...)
 		}
 	} else {
 		fmt.Println(a...)
