@@ -1,26 +1,31 @@
 package core
 
-import "github.com/bwmarrin/discordgo"
+import (
+	"github.com/bwmarrin/discordgo"
+)
 
-type Command struct {
-	Type        string
-	Args        []CommandArg
-	Session     *discordgo.Session
-	Interaction *discordgo.InteractionCreate
-	User        *discordgo.User
+type UserCommandType struct {
+	Name     string
+	Callback func(UserCommand)
 }
 
-func (c *Command) GetArg(name string) *CommandArg {
-	for _, arg := range c.Args {
-		if arg.Name == name {
-			return &arg
-		}
+type UserCommand struct {
+	Name        string
+	Session     *discordgo.Session
+	Interaction *discordgo.InteractionCreate
+	Caller      *discordgo.User
+	Target      *discordgo.User
+}
+
+func (u *UserCommandType) IntoDiscordCommand() *discordgo.ApplicationCommand {
+	return &discordgo.ApplicationCommand{
+		Name: u.Name,
+		Type: discordgo.UserApplicationCommand,
 	}
-	return nil
 }
 
 // Wrapper for simple interaction responses.
-func (c *Command) Reply(msg string, private bool) {
+func (c *UserCommand) Reply(msg string, private bool) {
 	r := discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -35,20 +40,13 @@ func (c *Command) Reply(msg string, private bool) {
 	Log("Sent reply: " + msg)
 }
 
-func (c *Command) EditReply(msg string) {
-	c.Session.InteractionResponseEdit(c.Session.State.User.ID, c.Interaction.Interaction, &discordgo.WebhookEdit{
-		Content: msg,
-	})
-}
-
 // Wrapper for sending a message to a spesified channel
-func (c *Command) MessageChannel(msg string, channelId string) {
+func (c *UserCommand) MessageChannel(msg string, channelId string) {
 	c.Session.ChannelMessageSend(channelId, msg)
 	Log("Sent message: " + msg)
 }
 
 // Sends a message in the same channel as the command was sent in.
-func (c *Command) Message(msg string) {
+func (c *UserCommand) Message(msg string) {
 	c.MessageChannel(msg, c.Interaction.ChannelID)
-	Log("Sent message: " + msg)
 }

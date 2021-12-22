@@ -46,7 +46,8 @@ var Babel core.Module = core.Module{
 			Callback: Insult,
 		},
 	},
-	Ready: ready,
+	UserCommands: []core.UserCommandType{},
+	Ready:        ready,
 }
 
 func ready(a *core.Application) error {

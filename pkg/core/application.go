@@ -14,12 +14,13 @@ const PUSH bool = true
 
 // The main entry point for the application. There should only be one instance of this being handled at a time!
 type Application struct {
-	name     string
-	modules  []Module
-	databass *Databass
-	session  *discordgo.Session
-	commands map[string]CommandType
-	Debug    bool
+	name         string
+	modules      []Module
+	databass     *Databass
+	session      *discordgo.Session
+	commands     map[string]CommandType
+	userCommands map[string]UserCommandType
+	Debug        bool
 }
 
 var trevor *Application
@@ -46,20 +47,7 @@ func InitApplication(name string, modules []Module, debug bool) (*Application, [
 
 	// Base modules + modules passed in
 	modules = append([]Module{
-		{
-			Name:        "core",
-			Description: "Core commands for Trevor.",
-			Commands: []CommandType{
-				{
-					Name:        "ping",
-					Description: "Ping the bot to make sure it's alive.",
-					Callback: func(c Command) {
-						c.Reply("Pong!", true)
-
-					},
-				},
-			},
-		},
+		CoreModule,
 	}, modules...)
 
 	// Initialize database connection using enviromenent variables
@@ -93,12 +81,13 @@ func InitApplication(name string, modules []Module, debug bool) (*Application, [
 
 	// Build the application
 	trevor = &Application{
-		name:     name,
-		modules:  modules,
-		databass: &Databass{client: mongoClient},
-		session:  session,
-		Debug:    debug,
-		commands: make(map[string]CommandType),
+		name:         name,
+		modules:      modules,
+		databass:     &Databass{client: mongoClient},
+		session:      session,
+		Debug:        debug,
+		commands:     make(map[string]CommandType),
+		userCommands: make(map[string]UserCommandType),
 	}
 
 	Log("Init")
@@ -214,6 +203,9 @@ func clientReady(s *discordgo.Session, r *discordgo.Ready) {
 					cmdName := fmt.Sprintf("%s_%s", c.Name, o.Name)
 					preregistered[cmdName] = o
 				}
+			} else {
+				// This is a simple command (probably a user command) so just register it without bothering with options.
+				preregistered[c.Name] = &discordgo.ApplicationCommandOption{}
 			}
 		}
 	}
@@ -255,7 +247,33 @@ func clientReady(s *discordgo.Session, r *discordgo.Ready) {
 					Logf("Pushed module group \"%s\" to discord!\n", rootCommand.Name)
 				}
 			}
+
+			// Handle user commands too
+			if len(m.UserCommands) > 0 {
+				for _, c := range m.UserCommands {
+					if _, ok := trevor.userCommands[c.Name]; ok {
+						Logf("WARNING: User command \"%s\" already exists!\n", c.Name)
+						continue
+					}
+
+					// Register commands locally for callback lookup
+					trevor.userCommands[c.Name] = c
+					Log("Cached local user command:", c.Name)
+					cmd := c.IntoDiscordCommand()
+					if _, ok := preregistered[cmd.Name]; !ok {
+						// This command does not seem to be registered, so lets push it to discord.
+						_, err := trevor.session.ApplicationCommandCreate(trevor.session.State.User.ID, "", cmd)
+						if err != nil {
+							Log("Failed to push user command to discord:", err)
+							Log("Root:", rootCommand.Options[0])
+						} else {
+							Logf("Pushed user command \"%s\" to discord!\n", cmd.Name)
+						}
+					}
+				}
+			}
 		}
+
 	}
 
 	// Execute start functions for modules
@@ -276,10 +294,46 @@ func clientReady(s *discordgo.Session, r *discordgo.Ready) {
 
 func commandEvent(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	root := i.ApplicationCommandData()
+
+	if len(root.Options) > 0 {
+		// This command has subcommands, so it must be a slash command call.
+		moduleCommandEvent(s, i)
+	} else {
+		// This is a root level command, so it can only be a user command.
+		userCommandEvent(s, i)
+	}
+}
+
+func userCommandEvent(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	root := i.ApplicationCommandData()
+	if cmdType, ok := trevor.userCommands[root.Name]; ok {
+		caller := i.Member.User
+		users := root.Resolved.Users
+		if len(users) > 0 {
+			for _, target := range users {
+				cmd := UserCommand{
+					Name:        root.Name,
+					Caller:      caller,
+					Target:      target,
+					Session:     s,
+					Interaction: i,
+				}
+				Logf("Executing command \"%s\" on user %s (called by %s)\n", cmdType.Name, cmd.Target.Username, cmd.Caller.Username)
+				if cmdType.Callback != nil {
+					cmdType.Callback(cmd)
+				}
+			}
+		}
+	} else {
+		Warn("Unknown user command:", root.Name)
+	}
+}
+
+func moduleCommandEvent(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	root := i.ApplicationCommandData()
 	sub := root.Options[0]
 	name := root.Name + "_" + sub.Name
 	if cmdType, ok := trevor.commands[name]; ok {
-
 		args := make([]CommandArg, 0)
 		// Strip arguments
 		for _, a := range sub.Options {
@@ -305,6 +359,8 @@ func messageEvent(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
+
+	Relay(m.Author, m.ChannelID, m.Content)
 
 	if strings.HasPrefix(strings.ToLower(m.Content), BangTag(s.State.User.ID)) {
 		taggedMessageEvent(s, m)

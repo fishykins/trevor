@@ -30,6 +30,38 @@ var Profile core.Module = core.Module{
 			Callback: SetSteamId,
 		},
 		{
+			Name:        "set_token",
+			Description: "Add a token to your profile",
+			Args: []core.CommandArgType{
+				{
+					Name:        "key",
+					Description: "key of the token",
+					Required:    true,
+					Type:        discordgo.ApplicationCommandOptionString,
+				},
+				{
+					Name:        "value",
+					Description: "value of the token",
+					Required:    true,
+					Type:        discordgo.ApplicationCommandOptionString,
+				},
+			},
+			Callback: SetPlayerToken,
+		},
+		{
+			Name:        "get_token",
+			Description: "Gets a token value",
+			Args: []core.CommandArgType{
+				{
+					Name:        "key",
+					Description: "key of the token",
+					Required:    true,
+					Type:        discordgo.ApplicationCommandOptionString,
+				},
+			},
+			Callback: GetPlayerToken,
+		},
+		{
 			Name:        "wipe",
 			Description: "Wipes all assosiated data with your user profile.",
 			Args: []core.CommandArgType{
@@ -43,13 +75,28 @@ var Profile core.Module = core.Module{
 			Callback: RemoveUser,
 		},
 	},
-	Ready: ready,
-	Stop:  nil,
+	Ready:   ready,
+	Stop:    nil,
+	Snooper: snoop,
 }
 
 func ready(a *core.Application) error {
 	Users = core.App().Databass().Users()
 	return nil
+}
+
+func snoop(s *discordgo.Session, m *discordgo.MessageCreate) {
+	user, err := TryGetUser(m.Author)
+	if err != nil || user != nil {
+		HandleMessage(user, m.Content)
+		return
+	}
+	if user == nil {
+		user = GetUser(m.Author)
+		HandleMessage(user, m.Content)
+		UpdateUser(user)
+	}
+
 }
 
 // This should always return a user object, else somthing has gone very wrong.
@@ -66,7 +113,7 @@ func GetUser(u *discordgo.User) *models.User {
 	return localUser
 }
 
-// This should always return a user object, else somthing has gone very wrong.
+// Tries to find a pre-exisitng user, or returns none
 func TryGetUser(u *discordgo.User) (*models.User, error) {
 	userId := core.GetUserId(u)
 	for _, user := range Users {
@@ -88,4 +135,29 @@ func RemoveUser(cmd core.Command) {
 	core.App().Databass().RemoveUser(&ctx, user)
 	cmd.Reply("Removed user from database.", true)
 	// TODO: Remove user from local cache as well.
+}
+
+func SetPlayerToken(cmd core.Command) {
+	key := cmd.GetArg("key").IntoDiscordOption().StringValue()
+	value := cmd.GetArg("value").IntoDiscordOption().StringValue()
+	user := GetUser(cmd.User)
+	if value != "" {
+		user.Tokens[key] = value
+		cmd.Reply("Successfully set token.", true)
+	} else {
+		delete(user.Tokens, key)
+		cmd.Reply("Successfully removed token.", true)
+	}
+	UpdateUser(user)
+}
+
+func GetPlayerToken(cmd core.Command) {
+	key := cmd.GetArg("key").IntoDiscordOption().StringValue()
+	user := GetUser(cmd.User)
+	value := user.Tokens[key]
+	if value != "" {
+		cmd.Reply("Token value: "+value, true)
+	} else {
+		cmd.Reply("Token not found.", true)
+	}
 }

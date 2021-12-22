@@ -94,7 +94,7 @@ func NeutralEvil() Alignment {
 func Neutral() Alignment {
 	return Alignment{
 		Authority: 0,
-		Morality:  -1,
+		Morality:  0,
 	}
 }
 
