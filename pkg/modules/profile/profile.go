@@ -2,6 +2,7 @@ package profile
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/fishykins/trevor/pkg/core"
@@ -28,6 +29,11 @@ var Profile core.Module = core.Module{
 				},
 			},
 			Callback: SetSteamId,
+		},
+		{
+			Name:        "stats",
+			Description: "Show your stats",
+			Callback:    stats,
 		},
 		{
 			Name:        "set_token",
@@ -130,4 +136,14 @@ func GetPlayerToken(cmd core.Command) {
 	} else {
 		cmd.Reply("Token not found.", true)
 	}
+}
+
+func stats(cmd core.Command) {
+	user := core.GetUser(cmd.User)
+	stats := ""
+	for key, value := range user.Stats {
+		stats += fmt.Sprintf("%s: %d\n", key, value)
+	}
+	msg := fmt.Sprintf("*STATS*\n```%s\n```", stats)
+	cmd.Reply(msg, true)
 }
